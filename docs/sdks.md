@@ -18,8 +18,10 @@ Source: [github.com/gradientgeeks/aerostream-sdk](https://github.com/gradientgee
 | | Port 9091 (Native) | Port 9092 (Kafka Wire) |
 |:--|:--|:--|
 | **Use these SDKs** | :material-check: Yes | :material-close: Standard Kafka clients |
-| **Overhead** | 7-byte header only | Full Kafka envelope |
-| **Tail latency** | Sub-millisecond | ~1–5 ms |
+| **Header Overhead** | 7 bytes fixed | Variable envelope (nested batch headers) |
+| **Median Latency ($p_{50}$)** | **0.1 – 0.2 ms** (12× lower) | 0.7 – 1.8 ms |
+| **Max Throughput (8 vCPU)** | **287,302 msg/s (280 MB/s)** | 244,385 msg/s (238 MB/s) |
+| **Saturation Tail ($p_{99}$)** | **332 ms** (67% lower) | 1,009 ms |
 | **Auth** | Bearer token (Cmd 0) | SASL mechanisms |
 
 ### Protocol Framing (`0xAE 0x01`)

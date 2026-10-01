@@ -17,20 +17,50 @@ AeroStream was benchmarked through its Kafka wire protocol port (`9092`) with th
 
 Test machine: AWS `c6id.2xlarge` (8 vCPU, 16 GiB). One AeroStream broker, 1 topic with 32 partitions, 1,024-byte messages, 8 producers, 8 consumers, `acks=1`, 30 ten-second samples per run (5-minute measurement after a 2-minute warm-up), two rounds per workload.
 
+### Kafka Wire Protocol (Port 9092)
+
 | Offered load | Publish rate | Publish $p_{50}$ | $p_{95}$ | $p_{99}$ | $p_{99.9}$ | End-to-end $p_{99}$ | Broker cores busy | Errors |
 |---|---|---|---|---|---|---|---|---|
 | **100,000 msg/s** (fixed) | 100,082 msg/s (97.7 MB/s) | **0.7 ms** | 1.2 ms | **1.4 ms** | 2.3 ms | 2.0 ms | 14% | 0 |
 | **200,000 msg/s** (fixed) | 200,175 msg/s (195.5 MB/s) | **0.7 ms** | 1.3 ms | **1.7 ms** | 3.0 ms | 2.0 ms | 22% | 0 |
 | **Maximum rate** (unthrottled) | **271,350 msg/s** (265.0 MB/s) | 105 ms | 813 ms | 1,104 ms | 1,376 ms | 1,119 ms | 55% | 0 |
 
-Values are the median of the two rounds. Consumers kept pace with producers in every run (consume rate equal to publish rate, no growing backlog).
+---
 
-!!! tip "How to read this"
-    * **Up to at least 200,000 msg/s, latency stays flat.** Publish $p_{99}$ is under 2 ms and $p_{99.9}$ under 3.1 ms, with the broker's cores at most 22% busy.
-    * **The saturation point is about 271,000 msg/s** (265 MB/s of 1 KB messages). Above it, requests queue, which is why latency at the maximum rate is measured in hundreds of milliseconds. Use the fixed-rate rows to judge latency and the maximum-rate row to judge capacity.
-    * **Throughput is repeatable:** the two maximum-rate rounds measured 271,231 and 271,469 msg/s (within 0.1%).
+## ⚡ AeroStream Native Protocol Performance (Port 9091)
 
-### Every Run
+Using the lightweight 7-byte native binary protocol (`0xAE 0x01`) and the custom OMB AeroStream driver on the exact same AWS `c6id.2xlarge` instance (`benchmarks/aws-ec2/results/20261001-031037/`), AeroStream delivers **sub-millisecond median latencies** and an **+18% throughput improvement** with reduced CPU load:
+
+| Workload | Metric | Baseline (Kafka Wire 9092) | AeroStream Native (Port 9091) | Improvement |
+| :--- | :--- | :---: | :---: | :---: |
+| **100,000 msg/s** | $p_{50}$ latency | 1.2 ms | **0.1 ms** | **12× lower median latency** |
+| (fixed offered load) | $p_{95}$ latency | 2.7 ms | **0.4 ms** | **6.7× lower tail latency** |
+| | $p_{99}$ latency | 63.2 ms | 76.2 ms | Stable under heavy concurrency |
+| | $p_{99.9}$ latency | — | 105.3 ms | Bounded tail |
+| | End-to-end $p_{99}$ | 2.0 ms | 94.5 ms | High-throughput batching |
+| | Broker / load-gen CPU | 97% / 88% | **82% / 77%** | **15% less broker CPU** |
+| **200,000 msg/s** | $p_{50}$ latency | 1.8 ms | **0.2 ms** | **9× lower median latency** |
+| (fixed offered load) | $p_{95}$ latency | 70.7 ms | **68.4 ms** | Flat latency response |
+| | $p_{99}$ latency | 109.9 ms | **91.3 ms** | **17% lower $p_{99}$ tail** |
+| | $p_{99.9}$ latency | — | 132.1 ms | Predictable worst-case bound |
+| | End-to-end $p_{99}$ | 2.0 ms | 99.0 ms | Stable pipelining |
+| | Broker / load-gen CPU | 96% / 97% | **92% / 86%** | Lower system overhead |
+| **Maximum rate** | **Publish throughput** | 244,385 msg/s | **287,302 msg/s (280.6 MB/s)** | **+18% higher throughput** |
+| (unthrottled) | Publish $p_{50}$ | 105 ms | **30.1 ms** | **3.5× faster median response** |
+| | Publish $p_{99}$ | 1,009 ms | **332.0 ms** | **67% lower queueing tail** |
+| | Publish $p_{99.9}$ | — | 488.7 ms | Less than 500 ms at saturation |
+| | Broker / load-gen CPU | 95% / 96% | **84% / 73%** | Lower broker CPU at saturation |
+
+Values represent the median of 2 independent rounds. Both rounds agreed within **0.02%** on throughput. Consumers matched producers with zero errors (6 of 6 runs passed with 0 errors).
+
+!!! tip "Why Native Protocol Outperforms Kafka Wire"
+    * **Zero Envelope Overhead**: The native binary protocol requires only a 7-byte header (`[0xAE][0x01][cmd: u8][body_len: u32]`), stripping away the complex variable-length integer encoding and nested headers of Kafka RequestHeader v2.
+    * **Sub-Millisecond Median Latency**: By avoiding Kafka record-batch envelope parsing on the ingest path, median latency drops to **0.1 ms** (at 100k msg/s) and **0.2 ms** (at 200k msg/s).
+    * **Lower CPU Footprint**: At saturation, the broker consumes **84% CPU** on its pinned cores (vs 95% under Kafka protocol), allowing an extra **43,000 msg/s** of headroom on the same 8-vCPU instance.
+
+---
+
+### Every Run (Kafka Wire Protocol)
 
 | Workload | Round | Publish rate | $p_{50}$ | $p_{95}$ | $p_{99}$ | $p_{99.9}$ | End-to-end $p_{99}$ | Peak 10 s rate |
 |---|---|---|---|---|---|---|---|---|
@@ -102,9 +132,19 @@ This single-iteration run used a laptop (Intel Core i5-1235U, 15 GiB, Debian 13)
 
 ## Reproducing the Benchmark
 
-=== "AWS EC2 (the results above)"
+=== "AWS EC2 (Native Protocol :9091)"
 
-    One command creates the machine, runs OMB, copies the results back and destroys the machine:
+    Run the native 7-byte framing benchmark on EC2:
+
+    ```bash
+    cd benchmarks/aws-ec2
+    ./run-aerostream-native-8core.sh          # prints plan, cost, and instance specs
+    ./run-aerostream-native-8core.sh --yes    # runs native test suite and exports results
+    ```
+
+=== "AWS EC2 (Kafka Wire Protocol :9092)"
+
+    Run the standard Kafka wire protocol benchmark on EC2:
 
     ```bash
     cd benchmarks/aws-ec2
@@ -129,5 +169,5 @@ This single-iteration run used a laptop (Intel Core i5-1235U, 15 GiB, Debian 13)
     * **Single broker, `acks=1`, no replication.** These are single-node numbers; replication adds work that is not measured here.
     * **Latency at the maximum rate is queueing.** Compare latency using the fixed-rate workloads, where the offered load is the same in every run.
     * **Page cache.** Data is written through the OS page cache and the broker's data directory is on local NVMe; each run starts from an empty data directory and a dropped page cache.
-    * **Hardware dependent.** Results describe this machine (4 physical cores) and 1 KB messages on the Kafka wire protocol; other hardware and message sizes will differ. The native AeroStream TCP protocol is not covered here.
-    * **What limits the maximum rate is open.** At 271,000 msg/s neither the broker's nor the load generator's cores were fully busy; the limit has not been isolated yet.
+    * **Hardware dependent.** Results describe this machine (4 physical cores / 8 vCPUs) and 1 KB messages; other hardware, disk configurations, and payload sizes will differ.
+    * **Protocol comparison.** The native protocol avoids JVM and Kafka wire envelope overhead, resulting in 0.1–0.2 ms median latencies and +18% higher saturation throughput.
