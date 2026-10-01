@@ -208,9 +208,29 @@ AeroStream provides **Automated Partition Draining**:
 
 ---
 
-## 5. Kubernetes StatefulSets & PreStop Hook
+## 5. Kubernetes Deployment & StatefulSets
 
-Deploy AeroStream as a **Kubernetes StatefulSet** backed by persistent volume claims (PVCs) for local NVMe storage:
+### Deploying via Official Helm Chart (OCI Registry)
+
+AeroStream is published as an OCI Helm chart to GitHub Container Registry (`ghcr.io`). Deploying into any Kubernetes 1.25+ cluster requires no extra repository configuration:
+
+```bash
+# Production install: 3 Raft controllers + 3 Rust storage brokers with persistent volumes
+helm install aerostream oci://ghcr.io/gradientgeeks/charts/aerostream \
+  --version 0.1.0
+
+# Dev / Single-Node Profile (Kind / Minikube):
+helm install aerostream oci://ghcr.io/gradientgeeks/charts/aerostream \
+  --version 0.1.0 \
+  -f https://raw.githubusercontent.com/gradientgeeks/aerostream/main/deploy/helm/aerostream/values-dev.yaml
+
+# Inspect all configurable values:
+helm show values oci://ghcr.io/gradientgeeks/charts/aerostream --version 0.1.0
+```
+
+### Manual StatefulSets & PreStop Hook
+
+If deploying via raw Kubernetes manifests, run AeroStream as a **Kubernetes StatefulSet** backed by persistent volume claims (PVCs) for local NVMe storage:
 
 ```yaml
 apiVersion: apps/v1
