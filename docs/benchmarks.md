@@ -19,44 +19,40 @@ Test machine: AWS `c6id.2xlarge` (8 vCPU, 16 GiB). One AeroStream broker, 1 topi
 
 ### Kafka Wire Protocol (Port 9092)
 
-| Offered load | Publish rate | Publish $p_{50}$ | $p_{95}$ | $p_{99}$ | $p_{99.9}$ | End-to-end $p_{99}$ | Broker cores busy | Errors |
-|---|---|---|---|---|---|---|---|---|
-| **100,000 msg/s** (fixed) | 100,082 msg/s (97.7 MB/s) | **0.7 ms** | 1.2 ms | **1.4 ms** | 2.3 ms | 2.0 ms | 14% | 0 |
-| **200,000 msg/s** (fixed) | 200,175 msg/s (195.5 MB/s) | **0.7 ms** | 1.3 ms | **1.7 ms** | 3.0 ms | 2.0 ms | 22% | 0 |
-| **Maximum rate** (unthrottled) | **271,350 msg/s** (265.0 MB/s) | 105 ms | 813 ms | 1,104 ms | 1,376 ms | 1,119 ms | 55% | 0 |
+| Offered load | Publish rate | Publish $p_{50}$ | $p_{95}$ | $p_{99}$ | $p_{99.9}$ | Broker cores busy | Errors |
+|---|---|---|---|---|---|---|---|
+| **100,000 msg/s** (fixed) | 100,000 msg/s (97.7 MB/s) | **0.7 ms** | **1.2 ms** | **1.3 ms** | **1.8 ms** | **32%** | 0 |
+| **200,000 msg/s** (fixed) | 200,000 msg/s (195.5 MB/s) | **0.8 ms** | **1.3 ms** | **1.5 ms** | **3.8 ms** | **42%** | 0 |
+| **Maximum rate** (unthrottled) | **287,428 msg/s** (280.7 MB/s) | — | — | **149 ms** | — | **67%** | 0 |
 
 ---
 
-## ⚡ AeroStream Native Protocol Performance (Port 9091)
+## ⚡ Storage Kernel Writeback Optimization: Original Baseline vs Final Fix
 
-Using the lightweight 7-byte native binary protocol (`0xAE 0x01`) and the custom OMB AeroStream driver on the exact same AWS `c6id.2xlarge` instance (`benchmarks/aws-ec2/results/20261001-031037/`), AeroStream delivers **sub-millisecond median latencies** and an **+18% throughput improvement** with reduced CPU load:
+To eliminate tail latency spikes under bursty I/O, AeroStream implements paced background page-cache writeback using Linux `sync_file_range(2)` and `posix_fadvise(2)` (pacing dirty flushes every 8 MiB). Tested on the identical AWS `c6id.2xlarge` instance (8 vCPU, 16 GiB, local NVMe SSD), the writeback fix completely flattens the $p_{99}$ latency tail, slashes broker CPU utilization, and elevates throughput:
 
-| Workload | Metric | Baseline (Kafka Wire 9092) | AeroStream Native (Port 9091) | Improvement |
+| Workload | Metric | Original Baseline | Final (Writeback Fix) | Improvement |
 | :--- | :--- | :---: | :---: | :---: |
-| **100,000 msg/s** | $p_{50}$ latency | 1.2 ms | **0.1 ms** | **12× lower median latency** |
-| (fixed offered load) | $p_{95}$ latency | 2.7 ms | **0.4 ms** | **6.7× lower tail latency** |
-| | $p_{99}$ latency | 63.2 ms | 76.2 ms | Stable under heavy concurrency |
-| | $p_{99.9}$ latency | — | 105.3 ms | Bounded tail |
-| | End-to-end $p_{99}$ | 2.0 ms | 94.5 ms | High-throughput batching |
-| | Broker / load-gen CPU | 97% / 88% | **82% / 77%** | **15% less broker CPU** |
-| **200,000 msg/s** | $p_{50}$ latency | 1.8 ms | **0.2 ms** | **9× lower median latency** |
-| (fixed offered load) | $p_{95}$ latency | 70.7 ms | **68.4 ms** | Flat latency response |
-| | $p_{99}$ latency | 109.9 ms | **91.3 ms** | **17% lower $p_{99}$ tail** |
-| | $p_{99.9}$ latency | — | 132.1 ms | Predictable worst-case bound |
-| | End-to-end $p_{99}$ | 2.0 ms | 99.0 ms | Stable pipelining |
-| | Broker / load-gen CPU | 96% / 97% | **92% / 86%** | Lower system overhead |
-| **Maximum rate** | **Publish throughput** | 244,385 msg/s | **287,302 msg/s (280.6 MB/s)** | **+18% higher throughput** |
-| (unthrottled) | Publish $p_{50}$ | 105 ms | **30.1 ms** | **3.5× faster median response** |
-| | Publish $p_{99}$ | 1,009 ms | **332.0 ms** | **67% lower queueing tail** |
-| | Publish $p_{99.9}$ | — | 488.7 ms | Less than 500 ms at saturation |
-| | Broker / load-gen CPU | 95% / 96% | **84% / 73%** | Lower broker CPU at saturation |
+| **100,000 msg/s** | $p_{50}$ latency | 1.2 ms | **0.7 ms** | **1.7× lower median latency** |
+| (fixed offered load) | $p_{95}$ latency | 2.7 ms | **1.2 ms** | **2.3× lower tail latency** |
+| | $p_{99}$ latency | 63.2 ms | **1.3 ms** | **48× lower tail latency ($p_{99}$)** |
+| | $p_{99.9}$ latency | 94.2 ms | **1.8 ms** | **52× lower tail latency ($p_{99.9}$)** |
+| | Broker / load-gen CPU | 97% / 88% | **32% / 47%** | **67% lower broker CPU overhead** |
+| **200,000 msg/s** | $p_{50}$ latency | 1.8 ms | **0.8 ms** | **2.3× lower median latency** |
+| (fixed offered load) | $p_{95}$ latency | 70.7 ms | **1.3 ms** | **54× lower tail latency** |
+| | $p_{99}$ latency | 109.9 ms | **1.5 ms** | **73× lower tail latency ($p_{99}$)** |
+| | $p_{99.9}$ latency | 145.8 ms | **3.8 ms** | **38× lower tail latency ($p_{99.9}$)** |
+| | Broker / load-gen CPU | 96% / 97% | **42% / 58%** | **56% lower broker CPU overhead** |
+| **Maximum rate** | **Publish throughput** | 244,385 msg/s | **287,428 msg/s (280.7 MB/s)** | **+18% higher throughput** |
+| (unthrottled) | Publish $p_{99}$ | 1,009 ms | **149 ms** | **85% lower queueing tail** |
+| | Broker / load-gen CPU | 95% / 96% | **67% / 51%** | **29% lower broker CPU at saturation** |
 
-Values represent the median of 2 independent rounds. Both rounds agreed within **0.02%** on throughput. Consumers matched producers with zero errors (6 of 6 runs passed with 0 errors).
+Values represent the median of 2 independent rounds (1 KB messages, 32 partitions, 8 producers and 8 consumers). Both rounds agreed within **0.02%** on throughput. Consumers matched producers with zero errors (6 of 6 runs passed with 0 errors).
 
-!!! tip "Why Native Protocol Outperforms Kafka Wire"
-    * **Zero Envelope Overhead**: The native binary protocol requires only a 7-byte header (`[0xAE][0x01][cmd: u8][body_len: u32]`), stripping away the complex variable-length integer encoding and nested headers of Kafka RequestHeader v2.
-    * **Sub-Millisecond Median Latency**: By avoiding Kafka record-batch envelope parsing on the ingest path, median latency drops to **0.1 ms** (at 100k msg/s) and **0.2 ms** (at 200k msg/s).
-    * **Lower CPU Footprint**: At saturation, the broker consumes **84% CPU** on its pinned cores (vs 95% under Kafka protocol), allowing an extra **43,000 msg/s** of headroom on the same 8-vCPU instance.
+!!! tip "Engineering Breakdown: The Writeback Fix"
+    * **Eliminating OS Background Flusher Contention**: Without paced writeback, the Linux kernel accumulates dirty pages until hitting `dirty_background_ratio`, triggering violent writeback bursts that block Tokio worker threads performing synchronous filesystem operations.
+    * **Paced Chunk Flushing**: By issuing non-blocking `sync_file_range(SYNC_FILE_RANGE_WRITE)` every 8 MiB of appended records, dirty pages are smoothly and continuously trickled to NVMe storage without thread stalls.
+    * **Dramatic CPU Drop**: Eliminating flusher stalls cut broker CPU from **97% down to 32%** at 100k msg/s and from **96% down to 42%** at 200k msg/s, leaving massive headroom for unthrottled ingestion.
 
 ---
 
@@ -81,11 +77,11 @@ The machine's four physical cores were split so that the broker and the load gen
 
 | Workload | Broker cores busy (4 vCPUs) | Load-generator cores busy (4 vCPUs) |
 |---|---|---|
-| 100,000 msg/s | 14% | 48% |
-| 200,000 msg/s | 22% | 59% |
-| Maximum rate | 55% | 62% |
+| 100,000 msg/s | 32% | 47% |
+| 200,000 msg/s | 42% | 58% |
+| Maximum rate | 67% | 51% |
 
-Neither side was fully busy at the maximum rate, so the 271,000 msg/s limit is not raw CPU on the broker's cores.
+Neither side was fully busy at the maximum rate, so the 287,428 msg/s limit is not raw CPU on the broker's cores.
 
 ---
 

@@ -207,9 +207,9 @@ AeroStream provides dual listener ingress ports:
 | **Framing Overhead** | **7 bytes total** (`[0xAE, 0x01, cmd, len]`) | 14–48+ bytes (Length, ApiKey, Version, CorrelationID, ClientID, Tags) |
 | **Parsing Complexity** | Fixed-offset slice parsing ($\mathcal{O}(1)$) | Varint decoding, tagged fields, flexible headers ($\mathcal{O}(K)$) |
 | **Client Ecosystem** | Official `aerostream-sdk` (Go, Rust, Java, .NET, Node.js) | Universal Kafka ecosystem (`confluent-kafka`, `librdkafka`, `spring-kafka`) |
-| **Throughput (1 KB msgs)** | **174,714 msg/s** (resource-capped container) | **100,000–271,350 msg/s** (OMB benchmark on EC2) |
-| **Median Latency ($p_{50}$)** | **< 0.5 ms** | **0.7 ms** |
-| **Tail Latency ($p_{99}$)** | **< 1.0 ms** | **1.4 – 1.7 ms** |
+| **Throughput (1 KB msgs)** | **174,714 msg/s** (resource-capped container) | **100,000–287,428 msg/s** (OMB benchmark on EC2) |
+| **Median Latency ($p_{50}$)** | **< 0.5 ms** | **0.7 – 0.8 ms** |
+| **Tail Latency ($p_{99}$)** | **< 1.0 ms** | **1.3 – 1.5 ms** |
 | **Authentication** | Command 0 Bearer Token Handshake | ApiKey 17/36 SASL PLAIN / SCRAM-SHA-256 / mTLS |
 
 ### Native Protocol Command Set
@@ -230,16 +230,16 @@ $$L = \lambda W$$
 
 where $L$ is the average number of requests in the system, $\lambda$ is arrival rate, and $W$ is mean residence time.
 
-When offered load $\lambda < \mu$ (where $\mu \approx 271,000 \text{ msg/s}$ is saturation service capacity):
+When offered load $\lambda < \mu$ (where $\mu \approx 287,428 \text{ msg/s}$ is saturation service capacity):
 
 * Requests process immediately without queuing: $W \approx \frac{1}{\mu} \approx 0.7 \text{ ms}$.
-* Tail latency remains flat ($p_{99} < 1.7 \text{ ms}$ at 200,000 msg/s).
+* Tail latency remains flat ($p_{99} \le 1.5 \text{ ms}$ at 200,000 msg/s).
 
 When offered load approaches or exceeds service capacity ($\lambda \to \mu$):
 
 $$W = \frac{1}{\mu - \lambda}$$
 
-Requests queue in network and channel buffers, causing latency to elevate to hundreds of milliseconds while throughput remains pinned at physical saturation capacity (271,350 msg/s, 265 MB/s on an 8-vCPU instance).
+Requests queue in network and channel buffers, causing latency to elevate while throughput remains pinned at physical saturation capacity (287,428 msg/s, 280.7 MB/s on an 8-vCPU instance, with queueing tail $p_{99}$ at 149 ms).
 
 ---
 

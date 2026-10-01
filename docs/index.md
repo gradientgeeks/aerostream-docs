@@ -45,15 +45,15 @@ AeroStream pairs two purpose-built runtimes, each used where it excels: **Go 1.2
 
 AeroStream was evaluated using the official **[Linux Foundation OpenMessaging Benchmark (OMB)](https://github.com/openmessaging/benchmark)** suite through its Kafka wire protocol port (`9092`) on an AWS `c6id.2xlarge` instance (8 vCPUs, 16 GiB RAM, local NVMe SSD):
 
-| Workload Target | Actual Publish Rate | Publish $p_{50}$ | Publish $p_{99}$ | Publish $p_{99.9}$ | End-to-End $p_{99}$ | Broker Cores Busy | Errors |
+| Workload Target | Actual Publish Rate | Publish $p_{50}$ | $p_{95}$ | Publish $p_{99}$ | Publish $p_{99.9}$ | Broker Cores Busy | Errors |
 |---|---|---|---|---|---|---|---|
-| **100,000 msg/s** (fixed) | 100,082 msg/s (97.7 MB/s) | **0.7 ms** | **1.4 ms** | **2.3 ms** | 2.0 ms | 14% | 0 |
-| **200,000 msg/s** (fixed) | 200,175 msg/s (195.5 MB/s) | **0.7 ms** | **1.7 ms** | **3.0 ms** | 2.0 ms | 22% | 0 |
-| **Maximum Rate** (unthrottled) | **271,350 msg/s** (265.0 MB/s) | 105 ms | 1,104 ms | 1,376 ms | 1,119 ms | 55% | 0 |
+| **100,000 msg/s** (fixed) | 100,000 msg/s (97.7 MB/s) | **0.7 ms** | **1.2 ms** | **1.3 ms** | **1.8 ms** | **32%** | 0 |
+| **200,000 msg/s** (fixed) | 200,000 msg/s (195.5 MB/s) | **0.8 ms** | **1.3 ms** | **1.5 ms** | **3.8 ms** | **42%** | 0 |
+| **Maximum Rate** (unthrottled) | **287,428 msg/s** (280.7 MB/s) | — | — | **149 ms** | — | **67%** | 0 |
 
-* **Zero Tail Latency Spikes**: $p_{99}$ latency stays strictly under **1.7 ms** at sustained 200,000 msg/s with consumers keeping pace in real time.
-* **Low CPU Utilization**: At 200,000 msg/s, the broker consumes only **22%** of its assigned execution cores.
-* **Hardware-Accelerated Throughput**: Delivers **10.9 GB/s** CRC32C verification and true zero-copy `sendfile(2)` transmission.
+* **Zero Tail Latency Spikes**: Paced writeback brings $p_{99}$ latency down to **1.5 ms** at sustained 200,000 msg/s (down from 109.9 ms baseline), with consumers keeping pace in real time.
+* **Low CPU Utilization**: Broker consumes only **32%** CPU at 100k msg/s and **42%** at 200k msg/s (down from 96–97% baseline).
+* **Hardware-Accelerated Throughput**: Max rate reaches **287,428 msg/s (280.7 MB/s)** (+18% over baseline) with saturation $p_{99}$ dropping by 85% to 149 ms.
 
 ---
 
