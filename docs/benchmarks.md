@@ -21,15 +21,15 @@ Test machine: AWS `c6id.2xlarge` (8 vCPU, 16 GiB). One AeroStream broker, 1 topi
 
 | Offered load | Publish rate | Publish $p_{50}$ | $p_{95}$ | $p_{99}$ | $p_{99.9}$ | Broker cores busy | Errors |
 |---|---|---|---|---|---|---|---|
-| **100,000 msg/s** (fixed) | 100,000 msg/s (97.7 MB/s) | **0.7 ms** | **1.2 ms** | **1.3 ms** | **1.8 ms** | **32%** | 0 |
-| **200,000 msg/s** (fixed) | 200,000 msg/s (195.5 MB/s) | **0.8 ms** | **1.3 ms** | **1.5 ms** | **3.8 ms** | **42%** | 0 |
-| **Maximum rate** (unthrottled) | **287,428 msg/s** (280.7 MB/s) | — | — | **149 ms** | — | **67%** | 0 |
+| **100,000 msg/s** (fixed) | 100,000 msg/s (97.7 MB/s) | **0.7 ms** | **1.2 ms** | **1.4 ms** | **2.3 ms** | **14%** | 0 |
+| **200,000 msg/s** (fixed) | 200,000 msg/s (195.5 MB/s) | **0.7 ms** | **1.3 ms** | **1.7 ms** | **3.0 ms** | **22%** | 0 |
+| **Maximum rate** (unthrottled) | **271,350 msg/s** (265.0 MB/s) | — | — | **1,104 ms** | — | **55%** | 0 |
 
 ---
 
-## ⚡ Storage Kernel Writeback Optimization: Original Baseline vs Final Fix
+## ⚡ Native Protocol (Port 9091): Writeback Fix, Original Baseline vs Final
 
-To eliminate tail latency spikes under bursty I/O, AeroStream implements paced background page-cache writeback using Linux `sync_file_range(2)` and `posix_fadvise(2)` (pacing dirty flushes every 8 MiB). Tested on the identical AWS `c6id.2xlarge` instance (8 vCPU, 16 GiB, local NVMe SSD), the writeback fix completely flattens the $p_{99}$ latency tail, slashes broker CPU utilization, and elevates throughput:
+The figures in this section are for the AeroStream **native protocol** (port 9091) with the custom OMB driver, not the Kafka port above. To eliminate tail latency spikes under bursty I/O, AeroStream implements paced background page-cache writeback using Linux `sync_file_range(2)` and `posix_fadvise(2)` (pacing dirty flushes every 8 MiB). Tested on the identical AWS `c6id.2xlarge` instance (8 vCPU, 16 GiB, local NVMe SSD), the writeback fix completely flattens the $p_{99}$ latency tail, slashes broker CPU utilization, and elevates throughput:
 
 | Workload | Metric | Original Baseline | Final (Writeback Fix) | Improvement |
 | :--- | :--- | :---: | :---: | :---: |
@@ -56,6 +56,21 @@ Values represent the median of 2 independent rounds (1 KB messages, 32 partition
 
 ---
 
+## ⚖️ Head-to-Head: Kafka Wire Port (:9092) vs Native Protocol (:9091)
+
+| Feature / Metric | Kafka Wire Protocol (:9092) | AeroStream Native Protocol (:9091) | Architectural Takeaway |
+| :--- | :---: | :---: | :--- |
+| **Protocol Framing** | Full Kafka Header v2 + RecordBatch | Minimal 7-Byte Fixed Frame (`0xAE 0x01`) | Native avoids framing & serialization overhead |
+| **Client Ecosystem** | 100% Drop-in (Java, Python, Go, Node, .NET) | Native SDKs (Go, Rust, Java, .NET, Node.js) | Zero migration friction vs tailored performance |
+| **100k msg/s $p_{99}$ Latency** | 1.4 ms | **1.3 ms** (1.2 ms reproduced) | Sub-1.5ms flat tail latency across both |
+| **200k msg/s $p_{99}$ Latency** | 1.7 ms | **1.5 ms** (1.4 ms reproduced) | Sub-2ms flat tail latency across both |
+| **Max Sustained Throughput** | 271,350 msg/s (265.0 MB/s) | **287,428 msg/s (280.7 MB/s)** | +5.9% throughput boost for native wire |
+| **Saturation $p_{99}$ Queueing Tail** | 1,104 ms | **149 ms** | 86.5% lower queue backlog at saturation |
+| **Broker CPU at 200k msg/s** | **22%** (pinned cores) | 42% (pinned cores) | Both maintain massive CPU headroom |
+| **Data Integrity & Errors** | 0 errors | 0 errors | Zero packet loss or corrupted batches |
+
+---
+
 ### Every Run (Kafka Wire Protocol)
 
 | Workload | Round | Publish rate | $p_{50}$ | $p_{95}$ | $p_{99}$ | $p_{99.9}$ | End-to-end $p_{99}$ | Peak 10 s rate |
@@ -77,11 +92,11 @@ The machine's four physical cores were split so that the broker and the load gen
 
 | Workload | Broker cores busy (4 vCPUs) | Load-generator cores busy (4 vCPUs) |
 |---|---|---|
-| 100,000 msg/s | 32% | 47% |
-| 200,000 msg/s | 42% | 58% |
-| Maximum rate | 67% | 51% |
+| 100,000 msg/s | 14% | 48% |
+| 200,000 msg/s | 22% | 59% |
+| Maximum rate | 55% | 62% |
 
-Neither side was fully busy at the maximum rate, so the 287,428 msg/s limit is not raw CPU on the broker's cores.
+Neither side was fully busy at the maximum rate, so the 271,350 msg/s limit is not raw CPU on the broker's cores.
 
 ---
 
