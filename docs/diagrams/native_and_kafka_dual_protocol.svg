@@ -184,7 +184,7 @@
 <text x="1704" y="1206" fill="#fbbf24" font-size="20" font-family="sans-serif" font-weight="700">Drop-In Client Compatibility</text>
 <rect x="3004" y="1188" width="76" height="26" rx="6" fill="#b45309"/>
 <text x="3042.0" y="1206" fill="#f8fafc" font-size="13" font-family="sans-serif" font-weight="600" text-anchor="middle">Drop-In</text>
-<text x="1704" y="1236" fill="#94a3b8" font-size="14" font-family="sans-serif" font-weight="500">100% Drop-In Replacement</text>
+<text x="1704" y="1236" fill="#94a3b8" font-size="14" font-family="sans-serif" font-weight="500">Drop-In Replacement</text>
 <circle cx="1706" cy="1259" r="3" fill="#fbbf24"/>
 <text x="1718" y="1264" fill="#cbd5e1" font-size="15" font-family="sans-serif">Zero Client Modification: existing Kafka applications work simply by updating bootstrap servers</text>
 <circle cx="1706" cy="1287" r="3" fill="#fbbf24"/>

@@ -61,7 +61,7 @@ Values represent the median of 2 independent rounds (1 KB messages, 32 partition
 | Feature / Metric | Kafka Wire Protocol (:9092) | AeroStream Native Protocol (:9091) | Architectural Takeaway |
 | :--- | :---: | :---: | :--- |
 | **Protocol Framing** | Full Kafka Header v2 + RecordBatch | Minimal 7-Byte Fixed Frame (`0xAE 0x01`) | Native avoids framing & serialization overhead |
-| **Client Ecosystem** | 100% Drop-in (Java, Python, Go, Node, .NET) | Native SDKs (Go, Rust, Java, .NET, Node.js) | Zero migration friction vs tailored performance |
+| **Client Ecosystem** | Drop-in (Java, Python, Go, Node, .NET) | Native SDKs (Go, Rust, Java, .NET, Node.js) | Zero migration friction vs tailored performance |
 | **100k msg/s $p_{99}$ Latency** | 1.4 ms | **1.3 ms** (1.2 ms reproduced) | Sub-1.5ms flat tail latency across both |
 | **200k msg/s $p_{99}$ Latency** | 1.7 ms | **1.5 ms** (1.4 ms reproduced) | Sub-2ms flat tail latency across both |
 | **Max Sustained Throughput** | 271,350 msg/s (265.0 MB/s) | **287,428 msg/s (280.7 MB/s)** | +5.9% throughput boost for native wire |

@@ -2234,14 +2234,14 @@
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "100% Drop-In Replacement",
+      "text": "Drop-In Replacement",
       "fontSize": 13,
       "fontFamily": 1,
       "textAlign": "left",
       "verticalAlign": "top",
       "baseline": 11,
       "containerId": null,
-      "originalText": "100% Drop-In Replacement",
+      "originalText": "Drop-In Replacement",
       "lineHeight": 1.25
     },
     {

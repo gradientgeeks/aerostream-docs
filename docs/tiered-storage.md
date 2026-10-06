@@ -61,6 +61,8 @@ AeroStream supports all major enterprise object storage backends via native asyn
     force_path_style = false # Set to true for MinIO
     ```
 
+    Add `evict_local_after_upload = true` directly under `[tiered_storage]` to free local disk as soon as a segment is safely in the bucket.
+
 === "Google Cloud Storage (GCS)"
 
     Configure GCS bucket archival:
@@ -111,6 +113,22 @@ AeroStream supports all major enterprise object storage backends via native asyn
 
 ---
 
+!!! note "Enabling it in the container image"
+    The all-in-one image reads the broker settings above from a TOML file when `BROKER_CONFIG` points at one, for example
+    `docker run -v $PWD/broker.toml:/cfg/broker.toml -e BROKER_CONFIG=/cfg/broker.toml quay.io/gradientgeeks/aerostream`.
+    Without it, tiered storage stays disabled.
+
+!!! success "Verified behaviour"
+    Tested end to end against an S3-compatible server with a 1 MiB segment size and a 3 MiB local retention limit: 12,000 records were produced, the broker kept only the newest 3 segments on disk, and a Kafka consumer that started from the beginning read all 12,000 records (offsets 0 to 11,999, payloads intact), pulling the older segments back from the bucket.
+
+    * **Offload:** every sealed segment (`.log` + `.idx`) is uploaded to `<prefix>tiered/<topic>/partition_<n>/<base offset>.{log,idx}`.
+    * **Reading back:** a fetch for an offset that has no local copy downloads the covering segment into the cold directory and serves it from there. Fetches are blocking for the duration of the download, so the first read of an old segment is slower than later ones.
+    * **Earliest offset:** `ListOffsets` (earliest) reports the oldest offset in the bucket, so consumers with `auto.offset.reset=earliest` start at the true beginning of the topic.
+    * **Local eviction (optional):** set `evict_local_after_upload = true` under `[tiered_storage]` to delete the local cold copy of a segment once both of its objects are confirmed in the bucket. Segments fetched back from the bucket are then cached locally, at most 8 per partition. The default is `false`, which keeps every sealed segment on local disk as well.
+    * **`S3ArchivalSinkConnector`** in the connector catalog only stores configuration and state; it does not write records to S3. Use tiered storage for archival.
+
+---
+
 ## 3. Segment Rollover & Hard-Link Staging
 
 To prevent blocking real-time message appends during multi-part network uploads, AeroStream decouples segment sealing from cloud transmission:
@@ -127,6 +145,7 @@ To prevent blocking real-time message appends during multi-part network uploads,
 ---
 
 ## 4. Transparent Historical Fetch
+
 
 When an analytical workload (e.g. Apache Spark, Trino, Snowflake, or an ML training pipeline) requests historical offsets that have already been purged from the local NVMe hot tier:
 
